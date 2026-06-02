@@ -216,35 +216,79 @@ def _to_special_bool(a, b):
 
 
 # Category map is a plain dict of primitives — cloudpickle can serialise it fine.
+# Keys are lowercased, space-normalised tokens from any retailer's category field.
+# Includes both raw scraped forms and the cleaned forms produced by the notebook.
 _CATEGORY_MAP = {
-    "fruit-vegetables":   ("Fresh Food",       "Fruit & Vegetables"),
-    "fruit-&-veg":        ("Fresh Food",       "Fruit & Vegetables"),
-    "fruit":              ("Fresh Food",       "Fruit & Vegetables"),
-    "bakery":             ("Fresh Food",       "Bakery"),
-    "dairy-eggs-fridge":  ("Fresh Food",       "Dairy, Eggs & Fridge"),
-    "meat-seafood":       ("Fresh Food",       "Meat & Seafood"),
-    "drinks":             ("Drinks",           "Drinks"),
-    "soft-drinks":        ("Drinks",           "Soft Drinks"),
-    "health-beauty":      ("Health & Beauty",  "Health & Beauty"),
-    "health":             ("Health & Beauty",  "Health"),
-    "groceries":          ("Pantry",           "Groceries"),
-    "pantry":             ("Pantry",           "Pantry"),
-    "frozen":             ("Frozen",           "Frozen"),
-    "household":          ("Household",        "Household"),
-    "pet":                ("Pet",              "Pet"),
-    "baby":               ("Baby",             "Baby"),
+    # ---- Fruit & Veg ----
+    "fruit-vegetables":          ("Fresh Food",      "Fruit & Vegetables"),
+    "fruit-&-veg":               ("Fresh Food",      "Fruit & Vegetables"),
+    "fruit & veg":               ("Fresh Food",      "Fruit & Vegetables"),
+    "fruit":                     ("Fresh Food",      "Fruit & Vegetables"),
+    "fruit vegetables":          ("Fresh Food",      "Fruit & Vegetables"),
+    # ---- Bakery ----
+    "bakery":                    ("Fresh Food",      "Bakery"),
+    # ---- Dairy ----
+    "dairy-eggs-fridge":         ("Fresh Food",      "Dairy, Eggs & Fridge"),
+    "dairy eggs & fridge":       ("Fresh Food",      "Dairy, Eggs & Fridge"),   # WOW cleaned
+    "dairy eggs fridge":         ("Fresh Food",      "Dairy, Eggs & Fridge"),
+    "fresh product":             ("Fresh Food",      "Dairy, Eggs & Fridge"),   # Aldi raw
+    # ---- Meat ----
+    "meat-seafood":              ("Fresh Food",      "Meat & Seafood"),
+    "meat seafood & deli":       ("Fresh Food",      "Meat & Seafood"),         # WOW cleaned
+    "meat seafood deli":         ("Fresh Food",      "Meat & Seafood"),
+    "deli":                      ("Fresh Food",      "Meat & Seafood"),
+    # ---- Drinks ----
+    "drinks":                    ("Drinks",          "Drinks"),
+    "soft-drinks":               ("Drinks",          "Soft Drinks"),
+    "soft drinks":               ("Drinks",          "Soft Drinks"),
+    "beer wine spirits":         ("Drinks",          "Beer, Wine & Spirits"),
+    # ---- Health & Beauty ----
+    "health-beauty":             ("Health & Beauty", "Health & Beauty"),
+    "health beauty":             ("Health & Beauty", "Health & Beauty"),        # Coles cleaned
+    "health & beauty":          ("Health & Beauty", "Health & Beauty"),
+    "health":                    ("Health & Beauty", "Health"),
+    "beauty":                    ("Health & Beauty", "Health & Beauty"),        # Aldi raw
+    "personal care":             ("Health & Beauty", "Personal Care"),
+    # ---- Pantry ----
+    "groceries":                 ("Pantry",          "Groceries"),
+    "pantry":                    ("Pantry",          "Pantry"),
+    "international foods":       ("Pantry",          "International Foods"),
+    "biscuits snacks":           ("Pantry",          "Biscuits & Snacks"),
+    "snacks":                    ("Pantry",          "Biscuits & Snacks"),
+    # ---- Frozen ----
+    "frozen":                    ("Frozen",          "Frozen"),
+    "freezer":                   ("Frozen",          "Frozen"),                 # Aldi raw
+    # ---- Household ----
+    "household":                 ("Household",       "Household"),
+    "laundry household":         ("Household",       "Household"),              # Aldi raw
+    "laundry":                   ("Household",       "Laundry"),
+    "cleaning":                  ("Household",       "Cleaning"),
+    # ---- Baby ----
+    "baby":                      ("Baby",            "Baby"),
+    # ---- Pet ----
+    "pet":                       ("Pet",             "Pet"),
 }
 
 
 def _canonical_category(raw_main, raw_sub=None):
-    """Return [canonical_l1, canonical_l2] from raw retailer category strings."""
+    """Return [canonical_l1, canonical_l2] from raw retailer category strings.
+
+    Tries both dash-normalised and space-normalised key forms so raw scraped
+    values ('health-beauty') and notebook-cleaned values ('Health Beauty')
+    both resolve correctly.
+    """
     import re
     for token in (raw_sub, raw_main):
         if not token:
             continue
-        key = re.sub(r"\s+", "-", str(token).strip().lower())
-        if key in _CATEGORY_MAP:
-            return list(_CATEGORY_MAP[key])
+        base = str(token).strip().lower()
+        # Try key with spaces (notebook-cleaned form)
+        if base in _CATEGORY_MAP:
+            return list(_CATEGORY_MAP[base])
+        # Try key with dashes (raw scraped form)
+        dashed = re.sub(r"\s+", "-", base)
+        if dashed in _CATEGORY_MAP:
+            return list(_CATEGORY_MAP[dashed])
     l1 = str(raw_main).strip().title() if raw_main else "Other"
     return [l1, l1]
 
@@ -274,6 +318,110 @@ def _classify_row(retailer, product_name, price, availability, unit_price_value)
 
 
 # =========================================================================== #
+#  NOTEBOOK-DERIVED CLEANING FUNCTIONS  (self-contained, no external imports)
+# =========================================================================== #
+
+# ---- Aldi: explicit sub-category remapping from notebook ---- #
+_ALDI_CAT_MAP = {
+    "fresh product":      "Dairy Eggs & Fridge",
+    "beauty":             "Health & Beauty",
+    "health":             "Health & Beauty",
+    "laundry household":  "Household",
+    "freezer":            "Frozen",
+}
+
+def _aldi_category(raw):
+    """Map Aldi raw sub-category slugs to cleaned names, then title-case."""
+    if not raw:
+        return "Other"
+    s = str(raw).strip().lower()
+    return _ALDI_CAT_MAP.get(s, str(raw).strip()).title()
+
+
+# ---- WOW: explode multi-category Department strings ---- #
+def _parse_wow_departments(raw):
+    """Parse WOW Department stringified list → clean array of category strings.
+
+    Fixes comma-containing category names BEFORE splitting so they don't get
+    torn apart:
+        "['Meat, Seafood & Deli', 'Dairy, Eggs & Fridge']"
+        → ['Meat Seafood & Deli', 'Dairy Eggs & Fridge']
+    """
+    import ast
+    if not raw:
+        return ["NOT LISTED"]
+    text = str(raw).strip()
+    # Replace commas INSIDE known multi-word category names before parsing.
+    text = text.replace("Meat, Seafood & Deli",  "Meat Seafood & Deli")
+    text = text.replace("Dairy, Eggs & Fridge",  "Dairy Eggs & Fridge")
+    try:
+        parsed = ast.literal_eval(text)
+        items = [str(x).strip().replace("'", "") for x in parsed if str(x).strip()]
+    except (ValueError, SyntaxError):
+        items = [text.strip("[]'\" ")]
+    items = [i for i in items if i]
+    return items if items else ["NOT LISTED"]
+
+
+# ---- WOW: normalize Package Size ---- #
+def _clean_package_size(raw):
+    """6pk → '6 pack', lowercase 'l' suffix → 'L'  (e.g. 500l → 500L)."""
+    if not raw:
+        return ""
+    import re
+    s = str(raw)
+    s = re.sub(r"(\d)pk\b", r"\1 pack", s)   # 6pk → 6 pack
+    s = re.sub(r"(?<=\d)l\b", "L", s)         # 500l → 500L
+    return s.strip()
+
+
+# ---- Coles: normalize Unit Size ---- #
+def _clean_unit_size(raw):
+    """'1 each' → 'each', lowercase, lowercase l → L."""
+    if not raw:
+        return ""
+    import re
+    s = str(raw).strip().replace("1 each", "each").lower()
+    s = re.sub(r"(?<=\d)l\b", "L", s)
+    return s
+
+
+# ---- Coles/IGA: clean category text ---- #
+def _clean_category_text(raw):
+    """Replace '--' and '-' with spaces and title-case (matches notebook output)."""
+    if not raw:
+        return "Other"
+    return str(raw).replace("--", " ").replace("-", " ").title().strip()
+
+
+# ---- IGA: clean product names ---- #
+def _clean_iga_product_name(raw):
+    """Apply the three IGA regex fixes from the notebook:
+       'gm' → 'g' at end, '8pk' → '8 pack', '600l' → '600L'.
+    """
+    if not raw:
+        return ""
+    import re
+    s = str(raw)
+    s = re.sub(r"gm$", "g", s)               # trailing 'gm' → 'g'
+    s = re.sub(r"(?<=\d)pk", " pack", s)      # '8pk' → '8 pack'
+    s = re.sub(r"(?<=\d)l", "L", s)           # '600l' → '600L'
+    return s
+
+
+# ---- IGA: clean SKU (float → string, strip '.0') ---- #
+def _clean_iga_sku(raw):
+    """IGA SKUs are barcodes stored as floats (e.g. '9300675009775.0').
+    Strip the spurious '.0' decimal suffix."""
+    if not raw:
+        return ""
+    s = str(raw).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
+
+
+# =========================================================================== #
 #  UDF REGISTRATIONS
 # =========================================================================== #
 
@@ -290,16 +438,24 @@ _dq_schema = StructType([
     StructField("reason", StringType()),
 ])
 
-udf_price     = F.udf(_clean_price,            DoubleType())
-udf_unit      = F.udf(_parse_unit_price,       _unit_schema)
-udf_norm_unit = F.udf(_norm_unit_price,        _unit_schema)
-udf_first     = F.udf(_first_from_list,        StringType())
-udf_sku       = F.udf(_make_surrogate_sku,     StringType())
-udf_brand     = F.udf(_extract_brand,          StringType())
-udf_avail     = F.udf(_normalize_availability, StringType())
-udf_special   = F.udf(_to_special_bool,        BooleanType())
-udf_cat       = F.udf(_canonical_category,     ArrayType(StringType()))
-udf_classify  = F.udf(_classify_row,           ArrayType(StringType()))
+udf_price        = F.udf(_clean_price,             DoubleType())
+udf_unit         = F.udf(_parse_unit_price,        _unit_schema)
+udf_norm_unit    = F.udf(_norm_unit_price,         _unit_schema)
+udf_first        = F.udf(_first_from_list,         StringType())
+udf_sku          = F.udf(_make_surrogate_sku,      StringType())
+udf_brand        = F.udf(_extract_brand,           StringType())
+udf_avail        = F.udf(_normalize_availability,  StringType())
+udf_special      = F.udf(_to_special_bool,         BooleanType())
+udf_cat          = F.udf(_canonical_category,      ArrayType(StringType()))
+udf_classify     = F.udf(_classify_row,            ArrayType(StringType()))
+# Notebook-derived cleaning UDFs
+udf_aldi_cat     = F.udf(_aldi_category,           StringType())
+udf_wow_depts    = F.udf(_parse_wow_departments,   ArrayType(StringType()))
+udf_clean_pkg    = F.udf(_clean_package_size,      StringType())
+udf_clean_usize  = F.udf(_clean_unit_size,         StringType())
+udf_clean_cat    = F.udf(_clean_category_text,     StringType())
+udf_clean_iga_pn = F.udf(_clean_iga_product_name,  StringType())
+udf_clean_iga_sk = F.udf(_clean_iga_sku,           StringType())
 
 # =========================================================================== #
 #  COLUMN RESOLVER  (_col)
@@ -377,6 +533,12 @@ def _conform(df, *, retailer, name, sku=None, brand=None, price=None,
         cat[0].alias("canonical_l1"),
         cat[1].alias("canonical_l2"),
         url_c.alias("product_url"),
+        # Composite key for cross-retailer fuzzy matching (notebook: Brand_Product_Size).
+        F.trim(F.concat_ws(" ",
+            brand_c.cast("string"),
+            name_c.cast("string"),
+            (_col(df, pkg).cast("string") if pkg else F.lit("")),
+        )).alias("brand_product_size"),
         F.col("_snapshot_date").alias("snapshot_date"),
         F.col("_source_file"),
         F.col("_ingest_ts"),
@@ -391,44 +553,73 @@ def _conform(df, *, retailer, name, sku=None, brand=None, price=None,
 
 @dlt.view(name="norm_aldi")
 def norm_aldi():
+    df = dlt.read_stream("raw_aldi")
+    # Apply notebook category remapping before conforming.
+    df = df.withColumn("_aldi_cat", udf_aldi_cat(_col(df, "Sub Category")))
     return _conform(
-        dlt.read_stream("raw_aldi"), retailer="Aldi",
+        df, retailer="Aldi",
         name="Product", price="Price", unit_price="Unit Price",
-        main_cat="Main Category", sub_cat="Sub Category", url="Product Page",
+        main_cat="_aldi_cat", url="Product Page",
     )
 
 
 @dlt.view(name="norm_coles")
 def norm_coles():
+    df = dlt.read_stream("raw_coles")
+    # Clean Unit Size: '1 each' → 'each', lowercase, l → L (notebook).
+    df = df.withColumn("_unit_size", udf_clean_usize(_col(df, "Unit Size")))
+    # Clean Category: replace dashes with spaces, title-case (notebook).
+    df = df.withColumn("_category",  udf_clean_cat(_col(df, "Category")))
+    # Filter: remove Liquor (duplicated in other categories — notebook logic).
+    df = df.filter(F.col("_category") != "Liquor")
     return _conform(
-        dlt.read_stream("raw_coles"), retailer="Coles",
+        df, retailer="Coles",
         name="Product Name", sku="SKU", brand="Brand",
         price="Current Price", prev_price="Previous Price",
-        unit_price="Price per unit", pkg="Unit Size",
+        unit_price="Price per unit", pkg="_unit_size",
         on_special_cols=("On Special",), avail="Availability",
-        supplier_list="Suppliers", main_cat="Category", url="URL",
+        supplier_list="Suppliers", main_cat="_category", url="URL",
     )
 
 
 @dlt.view(name="norm_iga")
 def norm_iga():
+    df = dlt.read_stream("raw_iga")
+    # Clean product names: gm→g, pk→pack, l→L (notebook regex rules).
+    df = df.withColumn("_product_name", udf_clean_iga_pn(_col(df, "Product Name")))
+    # Clean SKU: strip spurious '.0' from float barcodes (notebook).
+    df = df.withColumn("_sku",          udf_clean_iga_sk(_col(df, "SKU")))
+    # Clean category: replace dashes with spaces, title-case (notebook).
+    df = df.withColumn("_category",     udf_clean_cat(_col(df, "Main Category")))
     return _conform(
-        dlt.read_stream("raw_iga"), retailer="IGA",
-        name="Product Name", sku="SKU", price="Price",
+        df, retailer="IGA",
+        name="_product_name", sku="_sku", price="Price",
         unit_price="Price per unit",
-        main_cat="Main Category", sub_cat="Sub Category", url="Product URL",
+        main_cat="_category", sub_cat="Sub Category", url="Product URL",
     )
 
 
 @dlt.view(name="norm_woolworths")
 def norm_woolworths():
     df = dlt.read_stream("raw_woolworths")
-    # WOW 'Department' is a stringified list → reduce to a single clean category.
-    df = df.withColumn("_dept", udf_first(_col(df, "Department")))
+    # Parse Department list and explode: one row per category per product.
+    # Fix comma-containing names first ('Meat, Seafood & Deli' → 'Meat Seafood & Deli')
+    # so the split is correct (notebook logic).
+    df = (df
+          .withColumn("_dept_array", udf_wow_depts(_col(df, "Department")))
+          .withColumn("_dept",       F.explode(F.col("_dept_array")))
+          # Filter: Tobacco is behind a login wall; Liquor is BWS stock (notebook).
+          .filter(~F.col("_dept").isin("Tobacco Product", "Liquor"))
+          # Replace empty category with 'NOT LISTED' (notebook).
+          .withColumn("_dept",       F.when(F.col("_dept") == "", "NOT LISTED")
+                                      .otherwise(F.col("_dept")))
+          # Normalize Package Size: pk→pack, l→L (notebook).
+          .withColumn("_pkg",        udf_clean_pkg(_col(df, "Package Size")))
+    )
     return _conform(
         df, retailer="Woolworths",
         name="Product Name", sku="SKU", brand="Brand", price="Price",
-        unit_price="Price per unit", pkg="Package Size",
+        unit_price="Price per unit", pkg="_pkg",
         on_special_cols=("Specials",), avail="Availability", ratings="Ratings",
         main_cat="_dept", url="Product URL",
     )
