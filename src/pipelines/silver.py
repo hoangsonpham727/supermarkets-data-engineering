@@ -135,10 +135,12 @@ def _conform(df, *, retailer, name, sku=None, brand=None, price=None,
 # --------------------------------------------------------------------------- #
 @dlt.view(name="norm_aldi")
 def norm_aldi():
+    # Bronze sanitises column names: spaces → underscores.
+    # "Unit Price" -> "Unit_Price", "Main Category" -> "Main_Category", etc.
     return _conform(
         dlt.read_stream("raw_aldi"), retailer="Aldi",
-        name="Product", price="Price", unit_price="Unit Price",
-        main_cat="Main Category", sub_cat="Sub Category", url="Product Page",
+        name="Product", price="Price", unit_price="Unit_Price",
+        main_cat="Main_Category", sub_cat="Sub_Category", url="Product_Page",
     )
 
 

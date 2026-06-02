@@ -13,6 +13,8 @@ Configuration (set in databricks.yml / pipeline settings):
     source.root  e.g.  s3://my-supermarket-raw/raw   (or a UC Volume path)
 """
 
+import re
+
 import dlt
 from pyspark.sql import functions as F
 
@@ -21,6 +23,19 @@ from pyspark.sql import functions as F
 SOURCE_ROOT = spark.conf.get(  # noqa: F821  (spark provided by DLT runtime)
     "source.root", "/Volumes/supermarket/bronze/landing/raw"
 )
+
+
+def _sanitize_columns(df):
+    """Replace characters that Delta Lake forbids in column names ( ,;{}()\\n\\t=)
+    with underscores.  Aldi has spaces in headers like 'Unit Price', 'Main Category'.
+    Applied to every feed so Bronze is consistently clean for Silver to consume.
+    """
+    _bad = re.compile(r"[ ,;{}\(\)\n\t=]+")
+    renamed = [
+        F.col(f"`{c}`").alias(_bad.sub("_", c).strip("_"))
+        for c in df.columns
+    ]
+    return df.select(renamed)
 
 # retailer slug -> sub-path under SOURCE_ROOT (matches land_to_s3.py layout)
 RETAILERS = ["aldi", "coles", "iga", "woolworths"]
@@ -53,6 +68,7 @@ def _bronze_table(retailer: str):
                                      r"date=(\d{4}-\d{2}-\d{2})", 1)
                 ),
             )
+            .transform(_sanitize_columns)   # ← strip spaces/special chars from headers
         )
 
     return _ingest
