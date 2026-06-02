@@ -15,6 +15,7 @@ The pure-Python parsing/DQ logic lives in ``src.common`` so it is unit-tested.
 """
 
 import os
+import re as _re
 import sys
 
 import dlt
@@ -75,9 +76,25 @@ CONFORMED_COLS = [
 ]
 
 
+_BAD_CHARS = _re.compile(r"[ ,;{}\(\)\n\t=]+")
+
+
 def _col(df, name):
-    """Column if present in df, else typed NULL — lets one builder serve all feeds."""
-    return F.col(f"`{name}`") if name in df.columns else F.lit(None)
+    """Column if present in df, else typed NULL — lets one builder serve all feeds.
+
+    Bronze sanitises column names (spaces/special chars → underscores) before
+    writing to Delta.  We try the original name first, then the sanitised form,
+    so Silver column references don't need to know about Bronze's renaming.
+    """
+    if name in df.columns:
+        return F.col(f"`{name}`")
+    # Try the Bronze-sanitised form (e.g. "Unit Size" → "Unit_Size")
+    sanitised = _BAD_CHARS.sub("_", name)
+    if not name.startswith("_"):          # preserve leading _ on metadata cols
+        sanitised = sanitised.strip("_")
+    if sanitised in df.columns:
+        return F.col(f"`{sanitised}`")
+    return F.lit(None)
 
 
 def _conform(df, *, retailer, name, sku=None, brand=None, price=None,
@@ -113,17 +130,17 @@ def _conform(df, *, retailer, name, sku=None, brand=None, price=None,
         unit["measure"].alias("unit_price_measure"),
         norm["value"].alias("norm_unit_price"),
         norm["measure"].alias("norm_unit_measure"),
-        (_col(df, pkg) if pkg else F.lit(None)).alias("package_size_raw"),
+        (_col(df, pkg) if pkg else F.lit(None)).cast("string").alias("package_size_raw"),
         udf_special(*special_args[:2]).alias("on_special"),
         udf_avail(_col(df, avail) if avail else F.lit(None)).alias("availability"),
         (_col(df, ratings) if ratings else F.lit(None)).cast("double").alias("ratings"),
-        (udf_first(_col(df, supplier_list)) if supplier_list else F.lit(None))
+        (udf_first(_col(df, supplier_list)) if supplier_list else F.lit(None).cast("string"))
             .alias("primary_supplier"),
-        (_col(df, main_cat) if main_cat else F.lit(None)).alias("raw_main_category"),
-        (_col(df, sub_cat) if sub_cat else F.lit(None)).alias("raw_sub_category"),
+        (_col(df, main_cat) if main_cat else F.lit(None).cast("string")).alias("raw_main_category"),
+        (_col(df, sub_cat) if sub_cat else F.lit(None).cast("string")).alias("raw_sub_category"),
         cat["l1"].alias("canonical_l1"),
         cat["l2"].alias("canonical_l2"),
-        url_c.alias("product_url"),
+        url_c.cast("string").alias("product_url"),
         F.col("_snapshot_date").alias("snapshot_date"),
         F.col("_source_file"),
         F.col("_ingest_ts"),
@@ -135,12 +152,12 @@ def _conform(df, *, retailer, name, sku=None, brand=None, price=None,
 # --------------------------------------------------------------------------- #
 @dlt.view(name="norm_aldi")
 def norm_aldi():
-    # Bronze sanitises column names: spaces → underscores.
-    # "Unit Price" -> "Unit_Price", "Main Category" -> "Main_Category", etc.
+    # _col() auto-resolves sanitised names, so we use the original CSV headers
+    # throughout — Bronze handles the space→underscore renaming transparently.
     return _conform(
         dlt.read_stream("raw_aldi"), retailer="Aldi",
-        name="Product", price="Price", unit_price="Unit_Price",
-        main_cat="Main_Category", sub_cat="Sub_Category", url="Product_Page",
+        name="Product", price="Price", unit_price="Unit Price",
+        main_cat="Main Category", sub_cat="Sub Category", url="Product Page",
     )
 
 
