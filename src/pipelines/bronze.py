@@ -64,6 +64,13 @@ def _bronze_table(retailer: str):
             .option("cloudFiles.inferColumnTypes", "true")
             .option("cloudFiles.schemaEvolutionMode", "rescue")
             .option("header", "true")
+            # Coles 'Suppliers' cells are quoted lists that escape inner quotes the
+            # RFC-4180 way ("" inside a quoted field, e.g. "[""720488 L'OREAL""]").
+            # Spark defaults escape to backslash, so without this it mis-parses those
+            # rows and shifts every later column — dumping supplier text into Category
+            # (and on into canonical_l1/l2). Setting escape to '"' matches the data.
+            .option("quote", "\"")
+            .option("escape", "\"")
             .option("rescuedDataColumn", "_rescued_data")
             .load(path)
             .withColumn("_source_file", F.col("_metadata.file_path"))

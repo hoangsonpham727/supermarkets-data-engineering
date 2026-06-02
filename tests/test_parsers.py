@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.common.parsers import (  # noqa: E402
+from src.pipelines.silver import (  # noqa: E402
     canonical_category,
     clean_price,
     extract_brand,
@@ -19,7 +19,9 @@ from src.common.parsers import (  # noqa: E402
     normalize_unit_price,
     parse_list_string,
     parse_unit_price,
+    primary_wow_department,
     to_special_bool,
+    unit_price_all,
 )
 
 
@@ -146,3 +148,53 @@ class TestCanonicalCategory:
     def test_unknown_falls_back_to_titlecase(self):
         l1, l2 = canonical_category("MysteryDept")
         assert l1 == "Mysterydept"
+
+    def test_corrupt_supplier_fragment_buckets_to_other(self):
+        # Junk that used to leak from mis-parsed Coles CSV rows must not surface
+        # as a category — it should bucket to 'Other'.
+        assert canonical_category("234966 Leo'S Import And Distributors P/") == ("Other", "Other")
+        assert canonical_category('720488 L\'Oreal Aust P/L"]') == ("Other", "Other")
+
+
+# --------------------------- single-pass unit price ------------------------ #
+class TestUnitPriceAll:
+    def test_one_pass_returns_display_and_normalised(self):
+        # Same string yields both the display measure and the normalised base.
+        assert unit_price_all("$2.58 per 100mL") == (2.58, "per_100ml", 25.8, "per_l")
+        assert unit_price_all("$11.16 per 100g") == (11.16, "per_100g", 111.6, "per_kg")
+
+    def test_count_based_normalises_to_each(self):
+        assert unit_price_all("3c per tablet") == (0.03, "per_each", 0.03, "per_each")
+
+    def test_unparseable_unit_keeps_value_drops_norm(self):
+        value, measure, norm_value, norm_measure = unit_price_all("5.00 per widget")
+        assert value == 5.0 and measure is None
+        assert norm_value is None and norm_measure is None
+
+    def test_garbage_all_none(self):
+        assert unit_price_all(None) == (None, None, None, None)
+        assert unit_price_all("n/a") == (None, None, None, None)
+
+
+# --------------------------- WOW primary department ------------------------ #
+class TestPrimaryWowDepartment:
+    def test_single_department(self):
+        assert primary_wow_department("['Bakery']") == "Bakery"
+
+    def test_picks_first_real_department(self):
+        # Comma-containing names are fixed before the split, not torn apart.
+        assert primary_wow_department(
+            "['Meat, Seafood & Deli', 'Dairy, Eggs & Fridge']"
+        ) == "Meat Seafood & Deli"
+
+    def test_excluded_only_is_dropped(self):
+        # Purely Tobacco/Liquor products -> None so the caller drops them.
+        assert primary_wow_department("['Liquor']") is None
+        assert primary_wow_department("['Tobacco Product']") is None
+
+    def test_real_department_wins_over_excluded(self):
+        assert primary_wow_department("['Liquor', 'Pantry']") == "Pantry"
+
+    def test_empty_kept_as_not_listed(self):
+        assert primary_wow_department("[]") == "NOT LISTED"
+        assert primary_wow_department(None) == "NOT LISTED"

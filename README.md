@@ -44,12 +44,12 @@ conformed, comparable, analytics-ready model.
 
 ## Repository layout
 ```
-src/common/parsers.py      # unit-price/list/brand/category parsing (pure Python, tested)
-src/common/dq.py           # data-quality rule predicates (pure Python, tested)
 src/ingest/land_to_s3.py   # land dated CSVs into the S3 raw zone
 src/simulate/generate_days.py  # synthesize extra days (history for SCD2 / price change)
 src/pipelines/bronze.py    # Auto Loader ingestion (DLT)
-src/pipelines/silver.py    # conform + DQ + dimensions (DLT)
+src/pipelines/silver.py    # conform + DQ + dimensions (DLT); pure cleaning/DQ funcs
+                           #   live here (single source of truth) + are unit-tested
+                           #   directly, since Databricks workers can't import src.common
 src/pipelines/gold.py      # star schema + BI marts (DLT)
 tests/                     # pytest unit tests for parsers & DQ rules
 infra/terraform/           # S3 bucket + IAM role for the UC storage credential

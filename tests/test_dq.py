@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.common.dq import (  # noqa: E402
+from src.pipelines.silver import (  # noqa: E402
     check_price_present,
     check_price_unit_consistency,
     check_retailer,
