@@ -440,6 +440,7 @@ def norm_woolworths():
 
 @dlt.table(
     name="fact_price",
+    schema="silver",
     comment="Conformed daily price fact across all retailers (grain: retailer × product × date).",
     table_properties={"quality": "silver"},
 )
@@ -470,7 +471,7 @@ def fact_price():
     )
 
 
-@dlt.table(name="fact_price_quarantine",
+@dlt.table(name="fact_price_quarantine", schema="silver",
            comment="Rows flagged by DQ rules — kept for review, excluded from BI marts.")
 def fact_price_quarantine():
     return dlt.read_stream("fact_price").filter(F.col("is_quarantined"))
@@ -482,6 +483,7 @@ def fact_price_quarantine():
 
 dlt.create_streaming_table(
     name="dim_product",
+    schema="silver",
     comment="SCD2 product dimension — tracks attribute changes over time.",
 )
 dlt.apply_changes(
@@ -498,7 +500,7 @@ dlt.apply_changes(
 )
 
 
-@dlt.table(name="dim_category", comment="Canonical two-level category hierarchy.")
+@dlt.table(name="dim_category", schema="silver", comment="Canonical two-level category hierarchy.")
 def dim_category():
     return (
         dlt.read_stream("fact_price")
@@ -507,7 +509,7 @@ def dim_category():
     )
 
 
-@dlt.table(name="dim_retailer", comment="Static retailer reference dimension.")
+@dlt.table(name="dim_retailer", schema="silver", comment="Static retailer reference dimension.")
 def dim_retailer():
     rows = [
         ("Aldi",        "ALDI Australia",   "Discounter"),
@@ -526,7 +528,7 @@ def dim_retailer():
     )
 
 
-@dlt.table(name="dim_date", comment="Generated calendar dimension.")
+@dlt.table(name="dim_date", schema="silver", comment="Generated calendar dimension.")
 def dim_date():
     base = (
         dlt.read("fact_price")

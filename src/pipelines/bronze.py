@@ -53,6 +53,7 @@ def _bronze_table(retailer: str):
 
     @dlt.table(
         name=f"raw_{retailer}",
+        schema="bronze",
         comment=f"Raw {retailer} price snapshots, ingested incrementally via Auto Loader.",
         table_properties={"quality": "bronze", "pipelines.reset.allowed": "true"},
     )

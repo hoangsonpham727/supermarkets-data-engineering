@@ -20,6 +20,7 @@ def _clean_fact():
 # --------------------------------------------------------------------------- #
 @dlt.table(
     name="fact_price_daily",
+    schema="gold",
     comment="Star-schema price fact with day-over-day price change; FKs to dims.",
     table_properties={"quality": "gold"},
 )
@@ -53,8 +54,11 @@ def fact_price_daily():
 # --------------------------------------------------------------------------- #
 # Mart 1: cross-retailer price comparison (normalised unit price by category)
 # --------------------------------------------------------------------------- #
-@dlt.table(name="mart_price_comparison",
-           comment="Cheapest retailer per canonical category by normalised unit price.")
+@dlt.table(
+    name="mart_price_comparison",
+    schema="gold",
+    comment="Cheapest retailer per canonical category by normalised unit price.",
+)
 def mart_price_comparison():
     base = (
         dlt.read("fact_price_daily")
@@ -74,8 +78,11 @@ def mart_price_comparison():
 # --------------------------------------------------------------------------- #
 # Mart 2: specials penetration (% of range on special)
 # --------------------------------------------------------------------------- #
-@dlt.table(name="mart_specials_penetration",
-           comment="Share of products on special by retailer x category x day.")
+@dlt.table(
+    name="mart_specials_penetration",
+    schema="gold",
+    comment="Share of products on special by retailer x category x day.",
+)
 def mart_specials_penetration():
     return (
         dlt.read("fact_price_daily")
@@ -90,8 +97,11 @@ def mart_specials_penetration():
 # --------------------------------------------------------------------------- #
 # Mart 3: category price index (a 'basket' index per retailer over time)
 # --------------------------------------------------------------------------- #
-@dlt.table(name="mart_category_price_index",
-           comment="Avg normalised unit price by category x retailer x day (basket index).")
+@dlt.table(
+    name="mart_category_price_index",
+    schema="gold",
+    comment="Avg normalised unit price by category x retailer x day (basket index).",
+)
 def mart_category_price_index():
     daily = (
         dlt.read("fact_price_daily")
@@ -100,7 +110,6 @@ def mart_category_price_index():
         .agg(F.round(F.avg("norm_unit_price"), 2).alias("avg_norm_unit_price"),
              F.count("*").alias("n_products"))
     )
-    # index = price relative to each series' first observed day (=100)
     w = Window.partitionBy("retailer", "canonical_l1", "norm_unit_measure") \
               .orderBy("snapshot_date")
     return (daily
@@ -112,8 +121,11 @@ def mart_category_price_index():
 # --------------------------------------------------------------------------- #
 # Mart 4: availability rate
 # --------------------------------------------------------------------------- #
-@dlt.table(name="mart_availability",
-           comment="Availability rate by retailer x day.")
+@dlt.table(
+    name="mart_availability",
+    schema="gold",
+    comment="Availability rate by retailer x day.",
+)
 def mart_availability():
     return (
         dlt.read("fact_price")  # includes unavailable rows by design
@@ -129,8 +141,11 @@ def mart_availability():
 # --------------------------------------------------------------------------- #
 # Mart 5: data-quality scorecard (feeds the DQ dashboard page)
 # --------------------------------------------------------------------------- #
-@dlt.table(name="mart_dq_scorecard",
-           comment="Per-source row counts, quarantine rate and null-price rate.")
+@dlt.table(
+    name="mart_dq_scorecard",
+    schema="gold",
+    comment="Per-source row counts, quarantine rate and null-price rate.",
+)
 def mart_dq_scorecard():
     return (
         dlt.read("fact_price")
