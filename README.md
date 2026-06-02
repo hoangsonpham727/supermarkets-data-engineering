@@ -119,26 +119,6 @@ pytest          # 35 unit tests over the parsing & DQ rules
 ruff check .    # lint
 ```
 
-## End-to-end verification checklist
-1. **Parsers/DQ:** `pytest` green.
-2. **Landing:** `aws s3 ls s3://<bucket>/raw/ --recursive` shows date-partitioned keys.
-3. **Bronze incremental:** run pipeline; land one more day; re-run → only the new files
-   are ingested (row counts rise by the new files only).
-4. **Silver DQ:** WOW `Unavailable` rows are **quarantined, not dropped**; the Aldi
-   price/unit anomaly is flagged in `fact_price_quarantine`; expectation metrics visible
-   in the pipeline UI.
-5. **Gold:** `price_change_pct` matches the day-over-day drift; `mart_price_comparison`
-   marks the cheapest retailer per category by normalised unit price.
-6. **Dashboard:** all five tiles render; the price-index line trends across the synth days.
 
-## Known limitations / future work
-- **Product matching across retailers** is by *canonical category × normalised unit
-  price*, not entity resolution — fuzzy product matching is a documented enhancement.
-- **Brand extraction** for Aldi/IGA is a heuristic; a curated brand dictionary would
-  improve it.
-- The **synthetic days** are clearly labelled demo data; a real deployment lands genuine
-  daily extracts.
 
 ---
-*Data: four supermarket price snapshots scraped 2021-04-23 (Aldi 565, Coles 25,926,
-IGA 1,788, Woolworths 35,973 rows).*
