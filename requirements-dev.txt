@@ -1,0 +1,5 @@
+# Local development & CI dependencies (the pipelines themselves run on the
+# Databricks serverless runtime, which already ships PySpark + dlt).
+pytest>=8.0
+ruff>=0.6
+boto3>=1.34        # used by src/ingest/land_to_s3.py

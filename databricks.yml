@@ -1,0 +1,81 @@
+# Databricks Asset Bundle — deploys the medallion pipeline + daily job + dashboard
+# as code. Validate:  databricks bundle validate
+# Deploy dev:          databricks bundle deploy -t dev
+# Run once:            databricks bundle run price_intelligence_job -t dev
+bundle:
+  name: supermarket-price-intelligence
+
+variables:
+  catalog:
+    description: Unity Catalog catalog for all medallion schemas
+    default: supermarket
+  source_root:
+    description: Raw-zone root. S3 external location, or a UC Volume fallback on Free Edition.
+    default: /Volumes/supermarket/bronze/landing/raw
+  notifications_email:
+    description: Address for job failure alerts
+    default: ${workspace.current_user.userName}
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://<your-workspace>.cloud.databricks.com
+    variables:
+      catalog: supermarket_dev
+
+  prod:
+    mode: production
+    workspace:
+      host: https://<your-workspace>.cloud.databricks.com
+      root_path: /Shared/.bundle/${bundle.name}/prod
+    variables:
+      catalog: supermarket
+      source_root: s3://my-supermarket-raw/raw
+
+resources:
+  pipelines:
+    medallion_pipeline:
+      name: supermarket-medallion-${bundle.target}
+      catalog: ${var.catalog}
+      # Lakeflow Declarative Pipeline (Delta Live Tables), serverless on Free Edition.
+      serverless: true
+      photon: true
+      development: ${bundle.mode == "development"}
+      schema: silver           # default schema; tables also written to bronze/gold via target
+      configuration:
+        source.root: ${var.source_root}
+      libraries:
+        - file:
+            path: ./src/pipelines/bronze.py
+        - file:
+            path: ./src/pipelines/silver.py
+        - file:
+            path: ./src/pipelines/gold.py
+
+  jobs:
+    price_intelligence_job:
+      name: supermarket-price-intelligence-${bundle.target}
+      # Daily at 06:00 Australia/Sydney — after overnight extracts land in S3.
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: Australia/Sydney
+        pause_status: ${bundle.mode == "development" && "PAUSED" || "UNPAUSED"}
+      email_notifications:
+        on_failure:
+          - ${var.notifications_email}
+      tasks:
+        - task_key: land_to_s3
+          # Uploads any new local extracts to the S3 raw zone (skipped if you land
+          # files via an external process; kept here to demonstrate end-to-end).
+          notebook_task:
+            notebook_path: ./src/ingest/land_to_s3.py
+          # In a real deploy this would be an extract job; for the demo it can be disabled.
+
+        - task_key: run_medallion
+          depends_on:
+            - task_key: land_to_s3
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.medallion_pipeline.id}
+          max_retries: 2

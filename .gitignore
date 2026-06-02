@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Large raw data — keep only the original snapshot under data/raw, ignore synthesized output
+data/synth/
+*.parquet
+
+# Local Spark / DLT artifacts
+spark-warehouse/
+metastore_db/
+derby.log
+_checkpoints/
+
+# Terraform
+infra/terraform/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# Databricks
+.databricks/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Secrets
+.env
+*.pem
+aws-credentials*
