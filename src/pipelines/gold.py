@@ -19,8 +19,7 @@ def _clean_fact():
 # Central fact: one row per retailer x product x day, with day-over-day change
 # --------------------------------------------------------------------------- #
 @dlt.table(
-    name="fact_price_daily",
-    schema="gold",
+    name="gold.fact_price_daily",
     comment="Star-schema price fact with day-over-day price change; FKs to dims.",
     table_properties={"quality": "gold"},
 )
@@ -55,8 +54,7 @@ def fact_price_daily():
 # Mart 1: cross-retailer price comparison (normalised unit price by category)
 # --------------------------------------------------------------------------- #
 @dlt.table(
-    name="mart_price_comparison",
-    schema="gold",
+    name="gold.mart_price_comparison",
     comment="Cheapest retailer per canonical category by normalised unit price.",
 )
 def mart_price_comparison():
@@ -79,8 +77,7 @@ def mart_price_comparison():
 # Mart 2: specials penetration (% of range on special)
 # --------------------------------------------------------------------------- #
 @dlt.table(
-    name="mart_specials_penetration",
-    schema="gold",
+    name="gold.mart_specials_penetration",
     comment="Share of products on special by retailer x category x day.",
 )
 def mart_specials_penetration():
@@ -98,8 +95,7 @@ def mart_specials_penetration():
 # Mart 3: category price index (a 'basket' index per retailer over time)
 # --------------------------------------------------------------------------- #
 @dlt.table(
-    name="mart_category_price_index",
-    schema="gold",
+    name="gold.mart_category_price_index",
     comment="Avg normalised unit price by category x retailer x day (basket index).",
 )
 def mart_category_price_index():
@@ -122,8 +118,7 @@ def mart_category_price_index():
 # Mart 4: availability rate
 # --------------------------------------------------------------------------- #
 @dlt.table(
-    name="mart_availability",
-    schema="gold",
+    name="gold.mart_availability",
     comment="Availability rate by retailer x day.",
 )
 def mart_availability():
@@ -142,8 +137,7 @@ def mart_availability():
 # Mart 5: data-quality scorecard (feeds the DQ dashboard page)
 # --------------------------------------------------------------------------- #
 @dlt.table(
-    name="mart_dq_scorecard",
-    schema="gold",
+    name="gold.mart_dq_scorecard",
     comment="Per-source row counts, quarantine rate and null-price rate.",
 )
 def mart_dq_scorecard():

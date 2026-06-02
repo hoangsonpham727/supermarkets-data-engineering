@@ -52,8 +52,7 @@ def _bronze_table(retailer: str):
     """Define one Auto Loader streaming table for a retailer."""
 
     @dlt.table(
-        name=f"raw_{retailer}",
-        schema="bronze",
+        name=f"bronze.raw_{retailer}",
         comment=f"Raw {retailer} price snapshots, ingested incrementally via Auto Loader.",
         table_properties={"quality": "bronze", "pipelines.reset.allowed": "true"},
     )
