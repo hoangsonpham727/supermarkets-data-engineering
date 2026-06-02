@@ -553,7 +553,7 @@ def _conform(df, *, retailer, name, sku=None, brand=None, price=None,
 
 @dlt.view(name="norm_aldi")
 def norm_aldi():
-    df = dlt.read_stream("raw_aldi")
+    df = dlt.read_stream("bronze.raw_aldi")
     # Apply notebook category remapping before conforming.
     df = df.withColumn("_aldi_cat", udf_aldi_cat(_col(df, "Sub Category")))
     return _conform(
@@ -565,7 +565,7 @@ def norm_aldi():
 
 @dlt.view(name="norm_coles")
 def norm_coles():
-    df = dlt.read_stream("raw_coles")
+    df = dlt.read_stream("bronze.raw_coles")
     # Clean Unit Size: '1 each' → 'each', lowercase, l → L (notebook).
     df = df.withColumn("_unit_size", udf_clean_usize(_col(df, "Unit Size")))
     # Clean Category: replace dashes with spaces, title-case (notebook).
@@ -584,7 +584,7 @@ def norm_coles():
 
 @dlt.view(name="norm_iga")
 def norm_iga():
-    df = dlt.read_stream("raw_iga")
+    df = dlt.read_stream("bronze.raw_iga")
     # Clean product names: gm→g, pk→pack, l→L (notebook regex rules).
     df = df.withColumn("_product_name", udf_clean_iga_pn(_col(df, "Product Name")))
     # Clean SKU: strip spurious '.0' from float barcodes (notebook).
@@ -601,7 +601,7 @@ def norm_iga():
 
 @dlt.view(name="norm_woolworths")
 def norm_woolworths():
-    df = dlt.read_stream("raw_woolworths")
+    df = dlt.read_stream("bronze.raw_woolworths")
     # Parse Department list and explode: one row per category per product.
     # Fix comma-containing names first ('Meat, Seafood & Deli' → 'Meat Seafood & Deli')
     # so the split is correct (notebook logic).

@@ -12,7 +12,7 @@ from pyspark.sql import functions as F
 
 def _clean_fact():
     """Silver fact with quarantined rows removed — the basis for all marts."""
-    return dlt.read("fact_price").filter(~F.col("is_quarantined"))
+    return dlt.read("silver.fact_price").filter(~F.col("is_quarantined"))
 
 
 # --------------------------------------------------------------------------- #
@@ -59,7 +59,7 @@ def fact_price_daily():
 )
 def mart_price_comparison():
     base = (
-        dlt.read("fact_price_daily")
+        dlt.read("gold.fact_price_daily")
         .filter(F.col("norm_unit_price").isNotNull())
         .groupBy("snapshot_date", "canonical_l1", "canonical_l2", "norm_unit_measure",
                  "retailer")
@@ -82,7 +82,7 @@ def mart_price_comparison():
 )
 def mart_specials_penetration():
     return (
-        dlt.read("fact_price_daily")
+        dlt.read("gold.fact_price_daily")
         .groupBy("snapshot_date", "retailer", "canonical_l1")
         .agg(F.count("*").alias("n_products"),
              F.sum(F.col("on_special").cast("int")).alias("n_on_special"))
@@ -100,7 +100,7 @@ def mart_specials_penetration():
 )
 def mart_category_price_index():
     daily = (
-        dlt.read("fact_price_daily")
+        dlt.read("gold.fact_price_daily")
         .filter(F.col("norm_unit_price").isNotNull())
         .groupBy("snapshot_date", "retailer", "canonical_l1", "norm_unit_measure")
         .agg(F.round(F.avg("norm_unit_price"), 2).alias("avg_norm_unit_price"),
@@ -123,7 +123,7 @@ def mart_category_price_index():
 )
 def mart_availability():
     return (
-        dlt.read("fact_price")  # includes unavailable rows by design
+        dlt.read("silver.fact_price")  # includes unavailable rows by design
         .groupBy("snapshot_date", "retailer")
         .agg(F.count("*").alias("n_listings"),
              F.sum((F.col("availability") == "available").cast("int")).alias("n_available"),
@@ -142,7 +142,7 @@ def mart_availability():
 )
 def mart_dq_scorecard():
     return (
-        dlt.read("fact_price")
+        dlt.read("silver.fact_price")
         .groupBy("snapshot_date", "retailer")
         .agg(F.count("*").alias("n_rows"),
              F.sum(F.col("is_quarantined").cast("int")).alias("n_quarantined"),
