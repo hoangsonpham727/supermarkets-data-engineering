@@ -5,10 +5,10 @@ extend-exclude = ["data"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
-# DLT/Spark inject `spark`, `dlt`, `F` globals into the pipeline files at runtime
-# (F821); silver.py also imports src.common *after* a sys.path bootstrap (E402/I001).
+# DLT/Spark inject `spark`, `dlt`, `F` globals into the pipeline files at runtime (F821).
+# Pipeline files have verbose Spark expression chains that routinely exceed 100 chars (E501).
 [tool.ruff.lint.per-file-ignores]
-"src/pipelines/*.py" = ["F821", "E402", "I001"]
+"src/pipelines/*.py" = ["F821", "E402", "I001", "E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
