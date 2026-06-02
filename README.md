@@ -1,6 +1,6 @@
-# 🛒 Australian Supermarket Price-Intelligence Pipeline
+# Australian Supermarket Price-Intelligence Pipeline
 
-A production-style **daily price-intelligence** data pipeline built on a **100% free-tier**
+A production-style **daily price-intelligence** data pipeline built on a real-world
 stack: raw files land in **Amazon S3**, **Databricks** (Lakeflow Declarative Pipelines /
 Delta Live Tables) runs a **Bronze → Silver → Gold** medallion, and **Databricks AI/BI
 Dashboards** serve the analytics.
@@ -13,7 +13,7 @@ conformed, comparable, analytics-ready model.
 | Real-world concern | How it shows up here |
 |---|---|
 | Heterogeneous sources | 4 feeds, different columns, taxonomies & quirks → one conformed model |
-| Messy data | Stringified Python lists, mixed currency units (`3c`, `$2.58`), BOM headers, null prices, cents/dollars data-entry errors |
+| Messy data | Stringified Python lists, mixed currency units (`3c`, `$2.58`), BOM headers, null prices, cents/dollars data-entry errors, RFC-4180 quote-escaped CSV fields that shift columns if mis-parsed |
 | Incremental ingestion | **Auto Loader** processes only newly-landed daily files |
 | Data quality as a first-class concern | DLT expectations → **drop / quarantine / pass**; bad rows kept for review, not deleted |
 | Slowly-changing data | **SCD Type 2** product dimension tracks attribute changes over time |
@@ -42,6 +42,25 @@ conformed, comparable, analytics-ready model.
 - **Marts** — `mart_price_comparison`, `mart_specials_penetration`,
   `mart_category_price_index`, `mart_availability`, `mart_dq_scorecard`.
 
+### Cleaning & standardisation (Silver)
+The Silver layer is where the four feeds are conformed and cleaned. Key design points:
+- **Single source of truth** — every parsing / standardisation / data-quality function
+  lives once, as a pure Python function in `src/pipelines/silver.py`. The same functions
+  are unit-tested directly *and* wrapped as Spark UDFs (Databricks workers can't import a
+  shared `src.common`, so a parallel copy would only drift out of sync). Heavy imports are
+  guarded so the module loads in a plain pytest environment.
+- **Unit-price normalisation in one pass** — a single parse yields both the display
+  measure (`per_100g`) and the comparable base (`per_kg` / `per_l` / `per_each`).
+- **Conformed grain** — one row per *retailer × product × day*; Woolworths' multi-value
+  `Department` is collapsed to a single primary category (Tobacco/Liquor excluded) instead
+  of exploding a product into several rows, keeping the SCD2 key and day-over-day `lag()`
+  unambiguous.
+- **Correct CSV parsing at the source** — Bronze reads with `escape="\""` so RFC-4180
+  doubled-quote fields (Coles `Suppliers` lists) don't shift columns and leak supplier text
+  into the category fields.
+- **Defensive category mapping** — unknown tokens that look corrupt (leading digits,
+  quotes, brackets) bucket to `Other` rather than surfacing as a category.
+
 ## Repository layout
 ```
 src/ingest/land_to_s3.py   # land dated CSVs into the S3 raw zone
@@ -54,7 +73,7 @@ src/pipelines/gold.py      # star schema + BI marts (DLT)
 tests/                     # pytest unit tests for parsers & DQ rules
 infra/terraform/           # S3 bucket + IAM role for the UC storage credential
 databricks.yml             # Databricks Asset Bundle (pipeline + daily job + dashboard)
-dashboards/price_intelligence.lvdash.json  # AI/BI dashboard
+dashboards/dashboard.png   # AI/BI dashboard — report-style layout (screenshot)
 .github/workflows/ci.yml   # lint + tests + bundle validate
 ```
 
@@ -85,10 +104,7 @@ terraform apply -var bucket_name=<your-unique-bucket> \
 2. Create catalog `supermarket` with schemas `bronze`, `silver`, `gold`.
 3. **Connect S3:** create a UC **storage credential** (IAM role `uc_role_arn`) and an
    **external location** pointing at `s3://<bucket>/raw`.
-   - ⚠️ **If Free Edition blocks external S3:** fall back to a UC **managed Volume**
-     (`/Volumes/supermarket/bronze/landing/raw`) and upload the CSVs there. Auto Loader
-     works against the Volume path identically — just set `source.root` accordingly in
-     `databricks.yml`. **Record which path you used.**
+
 
 ### 3. Land the data
 ```bash
@@ -110,12 +126,15 @@ retries + failure email. Open the pipeline to see the Bronze→Silver→Gold lin
 and the DLT data-quality expectation metrics.
 
 ### 5. Dashboard
-Import `dashboards/price_intelligence.lvdash.json` as an AI/BI Dashboard (adjust the
-catalog name in the dataset queries if you used `supermarket_dev`).
+The Gold marts feed a **report-style AI/BI dashboard** that tells a complete
+price-intelligence story — *scale → trend → category economics → competitive positioning*:
+
+![Price-intelligence dashboard](dashboards/dashboard.png)
+
 
 ## Testing
 ```bash
-pytest          # 35 unit tests over the parsing & DQ rules
+pytest          # 45 unit tests over the parsing, cleaning & DQ rules
 ruff check .    # lint
 ```
 
