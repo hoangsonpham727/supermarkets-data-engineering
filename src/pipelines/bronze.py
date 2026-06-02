@@ -29,12 +29,19 @@ def _sanitize_columns(df):
     """Replace characters that Delta Lake forbids in column names ( ,;{}()\\n\\t=)
     with underscores.  Aldi has spaces in headers like 'Unit Price', 'Main Category'.
     Applied to every feed so Bronze is consistently clean for Silver to consume.
+
+    Leading underscores are preserved — metadata columns (_snapshot_date, _ingest_ts,
+    _source_file, _rescued_data) must keep their prefix so Silver can reference them.
     """
     _bad = re.compile(r"[ ,;{}\(\)\n\t=]+")
-    renamed = [
-        F.col(f"`{c}`").alias(_bad.sub("_", c).strip("_"))
-        for c in df.columns
-    ]
+    renamed = []
+    for c in df.columns:
+        new_name = _bad.sub("_", c)
+        # Only strip trailing underscores from substitutions; never strip leading ones
+        # (metadata cols like _snapshot_date start with _ intentionally).
+        if not c.startswith("_"):
+            new_name = new_name.strip("_")
+        renamed.append(F.col(f"`{c}`").alias(new_name))
     return df.select(renamed)
 
 # retailer slug -> sub-path under SOURCE_ROOT (matches land_to_s3.py layout)
