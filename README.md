@@ -9,19 +9,6 @@ The interesting engineering problem: four retailers (**Aldi, Coles, IGA, Woolwor
 publish the same concepts in **four different, messy schemas**. We integrate them into one
 conformed, comparable, analytics-ready model.
 
-## Why this is a realistic project
-| Real-world concern | How it shows up here |
-|---|---|
-| Heterogeneous sources | 4 feeds, different columns, taxonomies & quirks → one conformed model |
-| Messy data | Stringified Python lists, mixed currency units (`3c`, `$2.58`), BOM headers, null prices, cents/dollars data-entry errors, RFC-4180 quote-escaped CSV fields that shift columns if mis-parsed |
-| Incremental ingestion | **Auto Loader** processes only newly-landed daily files |
-| Data quality as a first-class concern | DLT expectations → **drop / quarantine / pass**; bad rows kept for review, not deleted |
-| Slowly-changing data | **SCD Type 2** product dimension tracks attribute changes over time |
-| Cross-source comparability | Unit prices normalised to **per-kg / per-L / per-each** |
-| Governance & lineage | **Unity Catalog** + DLT lineage graph |
-| Reproducible infra | **Terraform** (S3 + IAM) and **Databricks Asset Bundles** (pipeline/job/dashboard as code) |
-| CI/CD | **GitHub Actions**: lint + unit tests + bundle validate |
-
 ## Architecture
 
 ```
